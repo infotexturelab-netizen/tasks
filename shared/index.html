@@ -233,7 +233,7 @@ const DEFAULT_TOPICS = [
    Anyone holding the (long, random) list id can read and write it; that id is the invite link.
    Every change is sent as field-level paths, so two people editing different tasks never overwrite each other.
    Unsent changes are kept in localStorage and re-sent on the next launch (works offline). */
-const DB_URL = "__DB_URL__";
+const DB_URL = "https://tasks-shared-1eff7-default-rtdb.europe-west1.firebasedatabase.app";
 const FB_BASE = "https://www.gstatic.com/firebasejs/13.4.0/";
 const lsGet = (k,d)=>{ try{ const v = JSON.parse(localStorage.getItem(k)); return v==null ? d : v; }catch(e){ return d; } };
 const lsSet = (k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
