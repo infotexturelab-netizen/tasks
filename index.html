@@ -135,6 +135,37 @@ textarea.live{border-color:var(--accent)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-size:.9rem;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
 .toast button{background:none;border:0;color:inherit;font-weight:700;text-decoration:underline}
 .sync{font-size:.7rem;color:var(--muted);text-align:center;padding-top:6px}
+
+/* important dates: a second section on the same page, below the tasks */
+.events{border-top:3px double var(--margin);margin-top:4px;padding:10px 0 6px}
+.evhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px 6px 12px}
+.evhead h2{font-family:var(--font-hand);font-size:1.85rem;line-height:1;margin:0;font-weight:700;white-space:nowrap}
+.evbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.evbtn{border:1.5px solid #ddd5c6;background:#fff;border-radius:999px;padding:7px 12px;font-size:.85rem;white-space:nowrap}
+.evbtn.primary{background:var(--ink);color:var(--paper);border-color:transparent}
+.evlist{list-style:none;margin:0;padding:0}
+.ev{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--rule);cursor:pointer;min-height:var(--row)}
+.ev:active{background:#faf5ea}
+.evd{--b:#f1ece2;--f:var(--ink);background:var(--b);color:var(--f);border-radius:10px;text-align:center;padding:4px 2px 5px;line-height:1}
+.evd .dn{display:block;font-family:var(--font-hand);font-size:1.7rem;font-weight:700}
+.evd .mn{display:block;font-size:.68rem;margin-top:1px}
+.ev.d0 .evd{--b:var(--accent);--f:#fff}
+.ev.d1 .evd{--b:#f5a524;--f:#fff}
+.ev.wk .evd{--b:#fff0b3}
+.evt{overflow-wrap:anywhere;line-height:1.3}
+.evs{display:block;font-size:.76rem;color:var(--muted);margin-top:2px}
+.evc{font-size:.8rem;color:var(--muted);white-space:nowrap;text-align:left}
+.ev.d0 .evc,.ev.d1 .evc{color:var(--accent);font-weight:700}
+.ev.past{opacity:.55}
+.evmore{display:flex;gap:14px;justify-content:center;padding:8px 12px 2px}
+.evmore button{border:0;background:none;color:var(--muted);text-decoration:underline;font-size:.85rem;padding:6px 2px}
+.evempty{color:var(--muted);font-size:.9rem;padding:12px}
+.sheet input[type=date],.sheet input[type=time]{flex:1;min-width:0;border:1.5px solid var(--rule);background:#fff;color:var(--ink);border-radius:12px;padding:10px 12px;font:inherit;min-height:46px}
+.check{display:flex;gap:10px;align-items:center;font-size:.95rem}
+.check input{width:22px;height:22px;accent-color:var(--accent)}
+.steps{margin:0;padding-inline-start:20px;font-size:.88rem;line-height:1.5}
+.steps code{background:#f1ece2;border-radius:6px;padding:1px 5px;font-family:inherit;direction:ltr;unicode-bidi:embed}
+details summary{cursor:pointer;font-weight:700;font-size:.92rem}
 </style>
 
 <div class="desk">
@@ -153,6 +184,13 @@ textarea.live{border-color:var(--accent)}
       <div class="bk" id="bkBanner" hidden></div>
       <ul class="lines" id="list"></ul>
       <div class="foot" id="foot"></div>
+      <section class="events" id="events" aria-label="תאריכים ופגישות">
+        <div class="evhead"><h2>תאריכים ופגישות</h2>
+          <div class="evbtns"><button type="button" class="evbtn" id="evSync">⟳ מהיומן</button><button type="button" class="evbtn primary" id="evAdd">+ תאריך</button></div>
+        </div>
+        <ul class="evlist" id="evList"></ul>
+        <div class="evmore" id="evMore"></div>
+      </section>
     </section>
   </div>
   <div class="sync" id="sync">נשמר במכשיר</div>
@@ -192,7 +230,7 @@ const DEFAULT_TOPICS = [
   {id:"gallery", name:"גלריה", kw:["גלריה","תערוכה","ציור","ציורים","אמן","אמנית","אמנים","יצירה","יצירות","קנבס","מסגרת","מסגור","אוצר","אוצרת","פתיחה","סדנה","השכרה"]}
 ];
 
-let S = load() || {v:1, topics: DEFAULT_TOPICS.map(t=>({...t, kw:[...t.kw]})), tasks: []};
+let S = load() || {v:1, topics: DEFAULT_TOPICS.map(t=>({...t, kw:[...t.kw]})), tasks: [], events: []};
 let view = {tab:"open", topic:"all"};
 let pendingTopic = null, detected = null;
 
@@ -202,7 +240,9 @@ function normalize(d){
   if(!topics.some(t=>t.id==="general")) topics.unshift({id:"general",name:"כללי",kw:[]});
   const ids = new Set(topics.map(t=>t.id));
   const tasks = d.tasks.filter(t=>t && t.id && typeof t.text==="string").map(t=>({id:String(t.id), text:t.text, topic: ids.has(t.topic)?t.topic:"general", created:+t.created||Date.now(), doneAt: t.doneAt?+t.doneAt:null}));
-  return {v:1, topics, tasks};
+  const events = (Array.isArray(d.events)?d.events:[]).filter(e=>e && e.id && typeof e.title==="string" && /^\d{4}-\d{2}-\d{2}$/.test(e.date))
+    .map(e=>({id:String(e.id), title:e.title, date:e.date, time:/^\d{2}:\d{2}$/.test(e.time)?e.time:"", note:typeof e.note==="string"?e.note:"", src:e.src==="cal"?"cal":"app"}));
+  return {v:1, topics, tasks, events};
 }
 function load(){ try{ return normalize(JSON.parse(localStorage.getItem(LS_KEY))); }catch(e){ return null; } }
 function saveLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
@@ -357,7 +397,7 @@ function renderList(){
         <button class="grip" data-handle aria-label="גרור כדי להזיז">${ICON_GRIP}</button>
       </li>`).join("");
     const tn = view.topic==="all" ? "" : ` ב"${esc(topicById(view.topic).name)}"`;
-    list.innerHTML = rows + blanks(Math.max(3, 10-n), n ? "" : `אין משימות פתוחות${tn}. כתוב או הקלט משימה למטה.`);
+    list.innerHTML = rows + blanks(Math.max(2, 6-n), n ? "" : `אין משימות פתוחות${tn}. כתוב או הקלט משימה למטה.`);
     $("#foot").textContent = n>1 ? "גרור את ⋮⋮ באצבע כדי לשנות סדר, או אל לשונית של נושא. לחיצה ארוכה על משימה: בוצע ועריכה." : (n ? "לחיצה ארוכה על משימה פותחת אפשרויות." : "");
   } else {
     const vis = visibleDone();
@@ -369,11 +409,11 @@ function renderList(){
         <span class="date">${esc(fmtShort(t.doneAt))}</span>
         <span></span>
       </li>`).join("");
-    list.innerHTML = rows + blanks(Math.max(3, 10-vis.length), vis.length ? "" : "עוד לא בוצעו משימות כאן.");
+    list.innerHTML = rows + blanks(Math.max(2, 6-vis.length), vis.length ? "" : "עוד לא בוצעו משימות כאן.");
     $("#foot").textContent = vis.length ? "לחיצה על משימה: להחזיר אותה לרשימה או למחוק." : "";
   }
 }
-function render(){ if(typeof renderBackupBanner==="function") try{ renderBackupBanner(); }catch(e){} renderHead(); renderTabs(); renderList(); renderSuggest(); $("#composer").hidden = view.tab==="done"; }
+function render(){ if(typeof renderBackupBanner==="function") try{ renderBackupBanner(); }catch(e){} renderHead(); renderTabs(); renderList(); renderEvents(); renderSuggest(); $("#composer").hidden = view.tab==="done"; }
 
 /* ---------- composer ---------- */
 const input = $("#input");
@@ -747,6 +787,202 @@ function backupRestore(file){
   };
   r.readAsText(file);
 }
+/* ---------- important dates & meetings ---------- */
+const SHORTCUT_NAME = "יומן למשימות";
+const pad2 = n => String(n).padStart(2,"0");
+const dstr = d => d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate());
+const pdate = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const todayStr = () => dstr(new Date());
+const daysUntil = s => Math.round((pdate(s) - pdate(todayStr())) / DAY);
+const evSort = (a,b) => (a.date + (a.time||"00:00")).localeCompare(b.date + (b.time||"00:00"));
+const evKey = e => e.title.trim().replace(/\s+/g," ").toLowerCase() + "|" + e.date + "|" + (e.time||"");
+let evShowAll = false, evShowPast = false;
+function countdown(s, time){
+  const n = daysUntil(s);
+  if(n===0) return time ? "היום " + time : "היום";
+  if(n===1) return time ? "מחר " + time : "מחר";
+  if(n===2) return "מחרתיים";
+  if(n<0) return n===-1 ? "אתמול" : `לפני ${-n} ימים`;
+  if(n<7) return `בעוד ${n} ימים`;
+  if(n<14) return n===7 ? "בעוד שבוע" : `בעוד ${n} ימים`;
+  if(n<31) return `בעוד ${Math.round(n/7)} שבועות`;
+  return `בעוד ${Math.round(n/30.4)<=1 ? "חודש" : Math.round(n/30.4) + " חודשים"}`;
+}
+function evRow(e){
+  const d = pdate(e.date), n = daysUntil(e.date);
+  const cls = n<0 ? "past" : n===0 ? "d0" : n===1 ? "d1" : n<7 ? "wk" : "";
+  const sub = [`יום ${DAYS[d.getDay()]}`, e.time, e.note].filter(Boolean).map(esc).join(" · ");
+  return `<li class="ev ${cls}" data-ev="${esc(e.id)}">
+    <span class="evd"><span class="dn">${d.getDate()}</span><span class="mn">${esc(d.toLocaleDateString("he-IL",{month:"short"}))}</span></span>
+    <span class="evt">${esc(e.title)}<span class="evs">${sub}${e.src==="cal" ? " · 📅" : ""}</span></span>
+    <span class="evc">${esc(countdown(e.date, e.time))}</span></li>`;
+}
+function renderEvents(){
+  const box = $("#events"); if(!box) return;
+  box.hidden = view.tab!=="open";
+  const t = todayStr(), all = [...(S.events||[])].sort(evSort);
+  const up = all.filter(e=>e.date>=t), past = all.filter(e=>e.date<t).reverse();
+  const shown = evShowAll ? up : up.slice(0,6);
+  let h = shown.map(evRow).join("");
+  if(!up.length) h = `<li class="evempty">אין תאריכים קרובים. לחץ "+ תאריך" כדי להוסיף פגישה או תאריך חשוב.</li>`;
+  if(evShowPast && past.length) h += past.map(evRow).join("");
+  $("#evList").innerHTML = h;
+  let m = "";
+  if(up.length>6) m += `<button type="button" id="evAll">${evShowAll ? "הצג פחות" : `הצג את כל ${up.length}`}</button>`;
+  if(past.length) m += `<button type="button" id="evPast">${evShowPast ? "הסתר מה שעבר" : `עברו (${past.length})`}</button>`;
+  $("#evMore").innerHTML = m;
+}
+$("#evMore").addEventListener("click", e=>{
+  if(e.target.id==="evAll"){ evShowAll = !evShowAll; renderEvents(); }
+  if(e.target.id==="evPast"){ evShowPast = !evShowPast; renderEvents(); }
+});
+$("#evList").addEventListener("click", e=>{
+  const li = e.target.closest("[data-ev]"); if(!li) return;
+  const ev = (S.events||[]).find(x=>x.id===li.dataset.ev); if(ev) openEvent(ev);
+});
+$("#evAdd").addEventListener("click", ()=>openEvent(null));
+$("#evSync").addEventListener("click", openCalSync);
+
+const CAL_PREF = "todo-he-tocal";
+function openEvent(ev){
+  const isNew = !ev, e = ev || {title:"", date:"", time:"", note:""};
+  let toCal = true; try{ toCal = localStorage.getItem(CAL_PREF)!=="0"; }catch(_){}
+  const quick = [["היום",0],["מחר",1],["בעוד שבוע",7]];
+  sheet(`<h2>${isNew ? "תאריך חדש" : "תאריך / פגישה"}</h2>
+    <input type="text" id="evTitle" value="${esc(e.title)}" placeholder="מה? למשל: פגישה עם רואה החשבון" aria-label="מה">
+    <div class="chips" id="evQuick">${quick.map(([l,n])=>`<button type="button" class="chip" data-d="${n}">${l}</button>`).join("")}</div>
+    <div class="crow"><input type="date" id="evDate" value="${esc(e.date)}" aria-label="תאריך"><input type="time" id="evTime" value="${esc(e.time)}" aria-label="שעה (לא חובה)"></div>
+    <div class="small">השעה לא חובה. בלי שעה זה נרשם כאירוע של יום שלם.</div>
+    <input type="text" id="evNote" value="${esc(e.note)}" placeholder="מקום או פרטים (לא חובה)" aria-label="פרטים">
+    ${isNew ? `<label class="check"><input type="checkbox" id="evToCal" ${toCal?"checked":""}> להוסיף גם ליומן של האייפון</label>` : ""}
+    ${!isNew && e.src==="cal" ? `<div class="small">📅 הגיע מהיומן של האייפון. שינוי כאן לא משנה את היומן. כדי לשנות או למחוק לגמרי, עשה את זה ביומן ואז "⟳ מהיומן".</div>` : ""}
+    <div class="btns"><button class="btn primary" id="evSave">שמור</button>
+      ${!isNew && e.src!=="cal" ? `<button class="btn" id="evCal">📅 הוסף ליומן האייפון</button>` : ""}
+      ${!isNew ? `<button class="btn danger" id="evDel">מחק</button>` : ""}
+      <button class="btn" id="evCancel">ביטול</button></div>`, root=>{
+      const $r = s => root.querySelector(s);
+      if(isNew) setTimeout(()=>$r("#evTitle").focus(), 50);
+      $r("#evQuick").addEventListener("click", x=>{
+        const b = x.target.closest("[data-d]"); if(!b) return;
+        const d = new Date(); d.setDate(d.getDate() + +b.dataset.d); $r("#evDate").value = dstr(d);
+        root.querySelectorAll("#evQuick .chip").forEach(c=>c.setAttribute("aria-pressed", c===b));
+      });
+      const read = ()=>{
+        const title = $r("#evTitle").value.trim(), date = $r("#evDate").value;
+        if(!title){ $r("#evTitle").focus(); toast("כתוב מה התאריך או הפגישה"); return null; }
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $r("#evDate").focus(); toast("בחר תאריך"); return null; }
+        return {title, date, time: $r("#evTime").value || "", note: $r("#evNote").value.trim()};
+      };
+      $r("#evSave").onclick = ()=>{
+        const v = read(); if(!v) return;
+        if(isNew){
+          const nev = {id:uid(), ...v, src:"app"};
+          (S.events = S.events||[]).push(nev);
+          const want = $r("#evToCal").checked;
+          try{ localStorage.setItem(CAL_PREF, want ? "1" : "0"); }catch(_){}
+          closeSheet(); commit();
+          if(want) addToPhoneCalendar(nev); else toast("התאריך נוסף");
+        } else { Object.assign(ev, v); closeSheet(); commit(); }
+      };
+      if($r("#evCal")) $r("#evCal").onclick = ()=>{ const v = read(); if(!v) return; Object.assign(ev, v); closeSheet(); commit(); addToPhoneCalendar(ev); };
+      if($r("#evDel")){ const b = $r("#evDel"); b.onclick = ()=>armDanger(b, "מחק", ()=>{ S.events = S.events.filter(x=>x!==ev); closeSheet(); commit(); toast("נמחק"); }); }
+      $r("#evCancel").onclick = closeSheet;
+    });
+}
+
+/* app -> iPhone: a standard .ics file, which iOS opens with "Add to Calendar" */
+function icsText(e){
+  const esc2 = s => String(s).replace(/\\/g,"\\\\").replace(/;/g,"\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n");
+  const ymd = e.date.replace(/-/g,"");
+  let start, end;
+  if(e.time){
+    const s = pdate(e.date); const [hh,mm] = e.time.split(":").map(Number); s.setHours(hh, mm);
+    const f = d => dstr(d).replace(/-/g,"") + "T" + pad2(d.getHours()) + pad2(d.getMinutes()) + "00";
+    start = "DTSTART:" + f(s); end = "DTEND:" + f(new Date(s.getTime() + 36e5));
+  } else {
+    const n = pdate(e.date); n.setDate(n.getDate()+1);
+    start = "DTSTART;VALUE=DATE:" + ymd; end = "DTEND;VALUE=DATE:" + dstr(n).replace(/-/g,"");
+  }
+  const stamp = new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
+  return ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//tasks//he","CALSCALE:GREGORIAN","METHOD:PUBLISH","BEGIN:VEVENT",
+    "UID:" + e.id + "@tasks", "DTSTAMP:" + stamp, start, end, "SUMMARY:" + esc2(e.title),
+    e.note ? "DESCRIPTION:" + esc2(e.note) : null, "END:VEVENT","END:VCALENDAR"].filter(Boolean).join("\r\n") + "\r\n";
+}
+function addToPhoneCalendar(e){
+  const ics = icsText(e);
+  const iOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  if(iOS){
+    // iOS shows its own "Add to Calendar" screen for a calendar data link
+    const url = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics);
+    toast("נפתח היומן. לחץ שם \"הוסף ליומן\"");
+    const w = window.open(url, "_blank"); if(!w) location.href = url;
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ics], {type:"text/calendar"}));
+  a.download = e.title.replace(/[\\/:*?"<>|]/g,"").slice(0,40) + ".ics";
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast("קובץ יומן ירד. פתח אותו כדי להוסיף ליומן");
+}
+
+/* iPhone -> app: a Shortcut copies upcoming events as text lines "title | yyyy-MM-dd HH:mm"; the app pastes them */
+function parseCal(text){
+  const out = [];
+  for(const raw of String(text).split(/\r?\n/)){
+    const line = raw.trim(); if(!line) continue;
+    let m = line.match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T,]+(\d{1,2}):(\d{2}))?/), y, mo, d, hh, mm;
+    if(m){ [, y, mo, d, hh, mm] = m; }
+    else { m = line.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})(?:[ ,]+(\d{1,2}):(\d{2}))?/); if(!m) continue; [, d, mo, y, hh, mm] = m; if(y.length===2) y = "20" + y; }
+    const date = `${y}-${pad2(mo)}-${pad2(d)}`;
+    let time = hh!=null ? pad2(hh) + ":" + mm : "";
+    if(time==="00:00") time = "";
+    const title = line.slice(0, m.index).replace(/[|\t,\-–:\s]+$/,"").trim() || line.slice(m.index + m[0].length).replace(/^[|\t,\-–:\s]+/,"").trim();
+    if(title && !isNaN(pdate(date))) out.push({title, date, time});
+  }
+  return out;
+}
+function importCal(text){
+  const items = parseCal(text);
+  if(!items.length){ toast("לא מצאתי אירועים בטקסט שהודבק"); return false; }
+  S.events = S.events || [];
+  const have = new Set(S.events.map(evKey)), got = new Set(items.map(evKey));
+  let added = 0, removed = 0;
+  for(const it of items){ const k = evKey(it); if(!have.has(k)){ S.events.push({id:uid(), ...it, note:"", src:"cal"}); have.add(k); added++; } }
+  // calendar events that disappeared from the iPhone (deleted or moved) inside the imported range are removed here too
+  const t = todayStr(), last = items.map(i=>i.date).sort().pop();
+  S.events = S.events.filter(e=>{ const gone = e.src==="cal" && e.date>t && e.date<=last && !got.has(evKey(e)); if(gone) removed++; return !gone; });
+  closeSheet(); commit();
+  toast(added||removed ? `מהיומן: ${added} נוספו${removed ? `, ${removed} הוסרו` : ""}` : "הכל כבר מעודכן ✓");
+  return true;
+}
+function openCalSync(){
+  sheet(`<h2>מהיומן של האייפון</h2>
+    <div class="small">אפליקציה מהאתר לא יכולה לקרוא את היומן של אפל לבד. לכן קיצור דרך באייפון מעתיק את האירועים הקרובים, ואז מדביקים כאן. אירוע שכבר קיים לא ייכנס פעמיים.</div>
+    <div class="btns"><button class="btn" id="csRun">1. הרץ את הקיצור</button><button class="btn primary" id="csPaste">2. הדבק מהיומן</button></div>
+    <textarea id="csText" rows="4" placeholder="אפשר גם להדביק כאן ידנית, שורה לכל אירוע: פגישה עם דני | 2026-12-03 14:30" aria-label="טקסט מהיומן" hidden></textarea>
+    <div class="btns" id="csManual" hidden><button class="btn primary" id="csImport">ייבא</button></div>
+    <details><summary>איך מכינים את הקיצור (פעם אחת, כ-3 דקות)</summary>
+      <ol class="steps">
+        <li>פתח את אפליקציית <b>קיצורים</b> (Shortcuts) ← <b>+</b> קיצור חדש. קרא לו בדיוק: <code>${SHORTCUT_NAME}</code></li>
+        <li>הוסף פעולה <b>חפש אירועים ביומן</b> (Find Calendar Events). הגדר: "תאריך התחלה" ← "ב-הבא" ← <b>60 ימים</b>. מיון לפי תאריך התחלה.</li>
+        <li>הוסף <b>חזור עם כל פריט</b> (Repeat with Each). בתוכו פעולת <b>מלל</b> (Text) וכתוב: <code>כותרת | תאריך התחלה</code>, כש"כותרת" ו"תאריך התחלה" הם משתנים של "פריט חוזר". לחץ על "תאריך התחלה" ← עיצוב מותאם: <code>yyyy-MM-dd HH:mm</code></li>
+        <li>אחרי הלולאה: <b>צרף מלל</b> (Combine Text) עם <b>שורה חדשה</b>, ואז <b>העתק ללוח</b> (Copy to Clipboard).</li>
+        <li>זהו. מעכשיו: "⟳ מהיומן" ← "1. הרץ" ← חוזרים לכאן ← "2. הדבק".</li>
+      </ol></details>
+    <div class="btns"><button class="btn" id="csClose">סגור</button></div>`, root=>{
+      const $r = s => root.querySelector(s);
+      const manual = ()=>{ $r("#csText").hidden = false; $r("#csManual").hidden = false; $r("#csText").focus(); };
+      $r("#csRun").onclick = ()=>{ location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(SHORTCUT_NAME); };
+      $r("#csPaste").onclick = async ()=>{
+        try{ const t = await navigator.clipboard.readText(); if(t && importCal(t)) return; if(!t) toast("הלוח ריק. הרץ קודם את הקיצור"); }
+        catch(e){ toast("לא הצלחתי לקרוא את הלוח. הדבק בתיבה"); }
+        manual();
+      };
+      $r("#csImport").onclick = ()=>importCal($r("#csText").value);
+      $r("#csClose").onclick = closeSheet;
+    });
+}
+
 let toastTimer = null;
 function toast(msg, action, fn){
   const host = $("#toastHost");
