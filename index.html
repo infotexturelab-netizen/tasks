@@ -101,6 +101,7 @@ h1{font-family:var(--font-hand);font-size:2.9rem;line-height:1;margin:6px 0 2px;
 .crow{display:flex;gap:8px;align-items:flex-end}
 textarea{flex:1;min-width:0;resize:none;border:1.5px solid var(--rule);background:#fff;color:var(--ink);border-radius:14px;padding:11px 12px;font:inherit;line-height:1.35;max-height:120px}
 textarea.live{border-color:var(--accent)}
+.clr{flex:none;width:36px;height:48px;border:0;background:none;color:var(--muted);font-size:1.6rem;line-height:1;padding:0}
 .mic,.add{flex:none;width:48px;height:48px;border-radius:50%;border:0;display:grid;place-items:center}
 .mic{background:#f1ece2}
 .mic.on{background:var(--accent);color:#fff;animation:pulse 1.2s infinite}
@@ -161,6 +162,7 @@ textarea.live{border-color:var(--accent)}
   <div class="in">
     <div class="suggest" id="suggest" hidden></div>
     <form class="crow" id="form">
+      <button type="button" class="clr" id="clr" aria-label="נקה את הטקסט" hidden>×</button>
       <textarea id="input" rows="1" placeholder="משימה חדשה…" aria-label="משימה חדשה"></textarea>
       <button type="button" class="mic" id="mic" aria-label="הקלטה קולית" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
@@ -379,6 +381,7 @@ function autosize(){ input.style.height = "auto"; input.style.height = Math.min(
 function onTextChange(){
   autosize();
   $("#add").disabled = !input.value.trim();
+  $("#clr").hidden = !input.value;
   const d = detect(input.value);
   const changed = !detected || detected.topicId!==d.topicId || detected.newName!==d.newName || detected.candidates.join()!==d.candidates.join();
   detected = d;
@@ -414,6 +417,7 @@ $("#suggest").addEventListener("click", e=>{
   pendingTopic = {kind:"id", id:b.dataset.pick}; renderSuggest();
 });
 input.addEventListener("input", onTextChange);
+$("#clr").addEventListener("click", ()=>{ if(listening) stopListening(); clearInput(); input.focus(); });
 input.addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); addTask(); } });
 $("#form").addEventListener("submit", e=>{ e.preventDefault(); addTask(); });
 
@@ -429,29 +433,49 @@ function addTask(){
   } else if(pendingTopic) topic = pendingTopic.id;
   const task = {id:uid(), text, topic, created:Date.now(), doneAt:null};
   S.tasks.push(task); // new tasks go to the bottom; drag them up if urgent
-  input.value = ""; pendingTopic = null; detected = null; finalText = ""; onTextChange();
+  clearInput();
   commit();
   toast(`נוסף ל"${topicById(topic).name}"`);
   const el = document.querySelector(`.row[data-id="${task.id}"]`); if(el) el.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 
 /* ---------- voice ---------- */
-let dict = null, rec = null, listening = false, finalText = "", baseText = "";
+let dict = null, rec = null, listening = false, finalText = "", baseText = "", voiceLive = false;
+function clearInput(){
+  // stop any voice session from writing old words back into the box
+  voiceLive = false; finalText = ""; baseText = "";
+  if(rec) killRec(); else if(dict && listening) dict.stop().catch(()=>{});
+  input.value = ""; pendingTopic = null; detected = null; onTextChange();
+}
 const mic = $("#mic");
 function setMic(on){ listening = on; mic.classList.toggle("on", on); input.classList.toggle("live", on); mic.setAttribute("aria-label", on ? "עצור הקלטה" : "הקלטה קולית"); }
-function showLive(partial){ input.value = (baseText + finalText + (partial ? " " + partial : "")).replace(/\s+/g," ").trimStart(); onTextChange(); }
+function showLive(partial){ if(!voiceLive) return; input.value = (baseText + finalText + (partial ? " " + partial : "")).replace(/\s+/g," ").trimStart(); onTextChange(); }
+function killRec(){
+  if(!rec) return;
+  const r = rec; rec = null;
+  r.onresult = r.onend = r.onerror = null;
+  try{ r.abort(); }catch(e){}
+  setMic(false);
+}
 function startWebSpeech(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  killRec();
   try{
-    rec = new SR(); rec.lang = "he-IL"; rec.interimResults = true; rec.continuous = true;
-    rec.onresult = ev=>{ let interim = ""; for(let i=ev.resultIndex;i<ev.results.length;i++){ const r = ev.results[i]; if(r.isFinal) finalText += " " + r[0].transcript; else interim += r[0].transcript; } showLive(interim); };
-    rec.onerror = ev=>{ if(ev.error==="not-allowed"||ev.error==="service-not-allowed") toast("אין גישה למיקרופון. אפשר להקליד, או להשתמש במיקרופון של המקלדת."); };
-    rec.onend = ()=>{ setMic(false); showLive(""); };
-    rec.start(); setMic(true);
-  }catch(e){ setMic(false); toast("ההקלטה לא זמינה כאן. אפשר להשתמש במיקרופון של המקלדת."); }
+    const r = new SR(); rec = r; r.lang = "he-IL"; r.interimResults = true; r.continuous = true;
+    // rebuild the whole transcript of THIS session each time (iOS can resend old results)
+    r.onresult = ev=>{
+      if(rec!==r) return;
+      let fin = "", interim = "";
+      for(let i=0;i<ev.results.length;i++){ const x = ev.results[i]; if(x.isFinal) fin += " " + x[0].transcript; else interim += " " + x[0].transcript; }
+      finalText = fin; showLive(interim.trim());
+    };
+    r.onerror = ev=>{ if(ev.error==="not-allowed"||ev.error==="service-not-allowed") toast("אין גישה למיקרופון. אפשר להקליד, או להשתמש במיקרופון של המקלדת."); };
+    r.onend = ()=>{ if(rec!==r) return; rec = null; setMic(false); showLive(""); voiceLive = false; };
+    r.start(); setMic(true);
+  }catch(e){ rec = null; setMic(false); toast("ההקלטה לא זמינה כאן. אפשר להשתמש במיקרופון של המקלדת."); }
 }
 function startListening(){
-  baseText = input.value.trim() ? input.value.trim() + " " : ""; finalText = "";
+  baseText = input.value.trim() ? input.value.trim() + " " : ""; finalText = ""; voiceLive = true;
   if(dict){
     dict.start({language:"he"}).catch(err=>{
       setMic(false); const c = err && err.code;
@@ -470,7 +494,7 @@ async function initVoice(){
         dict = d; mic.hidden = false;
         d.onPartial(({text})=>showLive(text));
         d.onFinal(({text})=>{ finalText += text; showLive(""); });
-        d.onState(({state})=>{ setMic(state!=="idle"); if(state==="idle") showLive(""); });
+        d.onState(({state})=>{ setMic(state!=="idle"); if(state==="idle"){ showLive(""); voiceLive = false; } });
         return;
       }
     }catch(e){}
