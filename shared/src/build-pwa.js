@@ -28,7 +28,7 @@ const tail=`
 `;
 fs.writeFileSync(OUT+'index.html',head+body+tail);
 fs.writeFileSync(OUT+'manifest.webmanifest',JSON.stringify({
-  name:"משימות משותפות",short_name:"משותף",lang:"he",dir:"rtl",start_url:"./",scope:"./",display:"standalone",
+  name:"משימות משותפות",short_name:"משותף",lang:"he",dir:"rtl",scope:"./",display:"standalone",
   background_color:"#dfe7ee",theme_color:"#dfe7ee",
   icons:[{src:"icon-192.png",sizes:"192x192",type:"image/png"},{src:"icon-512.png",sizes:"512x512",type:"image/png"},{src:"icon-512.png",sizes:"512x512",type:"image/png",purpose:"maskable"}]
 },null,1));

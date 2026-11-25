@@ -343,6 +343,8 @@ async function openList(id){
   listRef = null; loaded = false;
   lists.cur = id; saveLists();
   const l = lists.all.find(x=>x.id===id);
+  // keep the list in the address, so "Add to Home Screen" opens this list even on a fresh install
+  try{ history.replaceState(null, "", location.pathname + "?l=" + id + "&n=" + encodeURIComponent((l && l.name) || "")); }catch(e){}
   S = load(id) || emptyState(l && l.name); base = flat(S);
   view.topic = "all"; render(); updSync(); wantName = !me;
   if(!DB_URL || DB_URL.startsWith("__")) return;
@@ -375,7 +377,7 @@ function addList(id, name){
 }
 function inviteLink(){ return location.origin + location.pathname + "#join=" + lists.cur + "&n=" + encodeURIComponent(S.name||""); }
 function parseInvite(text){
-  const m = String(text||"").match(/join=([a-z0-9]{16,40})(?:&n=([^\s&#]*))?/i) || String(text||"").trim().match(/^([a-z0-9]{16,40})$/i);
+  const m = String(text||"").match(/(?:join=|[?&]l=)([a-z0-9]{16,40})(?:&n=([^\s&#]*))?/i) || String(text||"").trim().match(/^([a-z0-9]{16,40})$/i);
   if(!m) return null;
   let name = ""; try{ name = m[2] ? decodeURIComponent(m[2]) : ""; }catch(e){}
   return {id:m[1].toLowerCase(), name};
@@ -958,6 +960,7 @@ function openEvent(ev){
 
 /* ---------- lists, invites, my name ---------- */
 function renderWelcome(){
+  try{ if(booted && (location.search || location.hash)) history.replaceState(null, "", location.pathname); }catch(e){}
   $("#page").classList.remove("done-view");
   $("#list").innerHTML = `<li class="welcome">
     <p>כאן יוצרים רשימת משימות <b>משותפת</b>: כל מי שמקבל את הלינק יכול להוסיף, לעדכן ולסמן משימות, ורואים הכל אצל כולם מיד.</p>
@@ -1002,7 +1005,7 @@ function openLists(){
     <div class="small">${(S.members||[]).length ? "משתתפים: " + (S.members||[]).map(m=>esc(m.name)).filter((n,i,a)=>a.indexOf(n)===i).join(", ") : ""}</div>
     <h2>כל הרשימות שלי</h2>
     <div class="chips" style="flex-direction:column" id="lAll">${rows}</div>
-    <button class="btn" id="lNew">+ רשימה משותפת חדשה</button>
+    <button class="btn" id="lNew">+ רשימה חדשה, או הצטרפות עם לינק</button>
     <div class="trow" style="border:0;border-top:1px solid var(--rule);padding-top:12px">
       <div class="crow"><input type="text" id="lMe" value="${esc(me)}" aria-label="השם שלי" placeholder="השם שלי"><button class="btn" id="lMeSave">שמור שם</button></div>
       <button class="btn danger" id="lLeave">הסר את הרשימה מהמכשיר הזה</button>
@@ -1042,10 +1045,11 @@ function askName(){
     });
 }
 function adoptMember(name, id){ if(id){ devId = id; lsSet("shared-dev-v1", devId); } setMe(name); }
+let booted = false;
 function boot(){
-  const inv = parseInvite(location.hash);
+  setTimeout(()=>{ booted = true; }, 0);
+  const inv = parseInvite(location.hash) || parseInvite(location.search);
   if(inv){
-    try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
     const known = lists.all.some(x=>x.id===inv.id);
     addList(inv.id, inv.name);
     if(!known) toast(`הצטרפת לרשימה "${inv.name || "רשימה משותפת"}" ✓`);
