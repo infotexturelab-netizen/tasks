@@ -138,7 +138,8 @@ textarea.live{border-color:var(--accent)}
 
 /* shared list header */
 .listname{display:block;width:100%;border:0;background:none;padding:0;text-align:center}
-.book.nolist{grid-template-columns:minmax(0,1fr)}
+.book,.book.nolist{grid-template-columns:minmax(0,1fr)}
+.sidetabs,.pill,#suggest,.topicpick{display:none!important}
 .listname h1{font-size:2.5rem}
 .crow .btn{white-space:nowrap}
 .listname h1::after{content:" ⌄";font-family:var(--font-body);font-size:1rem;color:var(--muted);vertical-align:middle}
@@ -148,7 +149,7 @@ textarea.live{border-color:var(--accent)}
 .dates{border-top:3px double var(--margin);margin-top:4px;padding:6px 0 14px}
 .dates .dh{display:flex;align-items:center;justify-content:space-between;padding:6px 14px 6px 12px}
 .dates h3{font-family:var(--font-hand);font-size:1.9rem;margin:0;line-height:1;font-weight:700}
-.dates .addev{border:1.5px dashed #bdb5a5;background:none;border-radius:999px;padding:6px 12px;font-size:.85rem;color:var(--ink)}
+.dates .addev{white-space:nowrap;border:1.5px dashed #bdb5a5;background:none;border-radius:999px;padding:6px 12px;font-size:.85rem;color:var(--ink)}
 .ev{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;border:0;border-bottom:1px solid var(--rule);background:none;padding:8px 14px 8px 12px;text-align:right}
 .ev .cal{border-radius:10px;background:#fff;border:1.5px solid var(--rule);text-align:center;padding:3px 0;line-height:1.1}
 .ev .cal b{display:block;font-size:1.25rem}
@@ -259,7 +260,7 @@ function fromRemote(raw){
   const arr = o => o && typeof o==="object" ? Object.keys(o).filter(id=>o[id] && typeof o[id]==="object").map(id=>({...o[id], id})) : [];
   const byO = (a,b)=>(+a.o||0)-(+b.o||0) || (+a.created||0)-(+b.created||0);
   const topics = arr(raw.topics).sort(byO).map(t=>({...t, kw: typeof t.kw==="string" && t.kw ? t.kw.split("|") : []}));
-  const members = arr(raw.members).filter(m=>m.name).sort((a,b)=>(+a.seen||0)-(+b.seen||0)).map(m=>({id:m.id, name:String(m.name), seen:+m.seen||0}));
+  const members = arr(raw.members).filter(m=>m.name).sort((a,b)=>(+a.seen||0)-(+b.seen||0)).map(m=>({id:m.id, name:String(m.name).trim(), seen:+m.seen||0}));
   return normalize({name: raw.name, topics, tasks: arr(raw.tasks).sort(byO), events: arr(raw.events), members});
 }
 // state -> {"tasks/<id>/text": ..., ...}; members are written separately
@@ -343,7 +344,7 @@ async function openList(id){
   lists.cur = id; saveLists();
   const l = lists.all.find(x=>x.id===id);
   S = load(id) || emptyState(l && l.name); base = flat(S);
-  view.topic = "all"; render(); updSync();
+  view.topic = "all"; render(); updSync(); wantName = !me;
   if(!DB_URL || DB_URL.startsWith("__")) return;
   try{ await fbInit(); }catch(e){ setSync("אין חיבור לשרת. השינויים נשמרים במכשיר."); return; }
   if(lists.cur!==id) return;
@@ -359,7 +360,7 @@ async function openList(id){
     }
     const n = fromRemote(raw);
     if(n) applyRemote(n);
-    if(first){ send(); pruneOld(); }
+    if(first){ send(); pruneOld(); if(wantName && !me){ wantName = false; askName(); } }
     updSync();
   }, ()=>{ setSync("אין גישה לרשימה הזו. בדוק שהלינק נכון."); });
 }
@@ -491,9 +492,9 @@ function renderList(){
         ${pill(t)}
         <button class="grip" data-handle aria-label="גרור כדי להזיז">${ICON_GRIP}</button>
       </li>`).join("");
-    const tn = view.topic==="all" ? "" : ` ב"${esc(topicById(view.topic).name)}"`;
+    const tn = "";
     list.innerHTML = rows + blanks(Math.max(2, 6-n), n ? "" : `אין משימות פתוחות${tn}. כתוב או הקלט משימה למטה.`);
-    $("#foot").textContent = n>1 ? "גרור את ⋮⋮ באצבע כדי לשנות סדר, או אל לשונית של נושא. לחיצה ארוכה על משימה: בוצע ועריכה." : (n ? "לחיצה ארוכה על משימה פותחת אפשרויות." : "");
+    $("#foot").textContent = n>1 ? "גרור את ⋮⋮ באצבע כדי לשנות סדר. לחיצה על משימה: בוצע ועריכה." : (n ? "לחיצה ארוכה על משימה פותחת אפשרויות." : "");
   } else {
     const vis = visibleDone();
     const rows = vis.map(t=>`
@@ -569,8 +570,9 @@ function addTask(){
   if(listening) stopListening();
   const raw = input.value.trim(); if(!raw) return;
   const d = detect(raw);
-  const text = (d.topicId || d.newName) ? (d.clean || raw) : raw;
+  const text = raw;
   let topic = "general";
+  pendingTopic = null; // shared app: no categories
   if(pendingTopic && pendingTopic.kind==="new"){
     const ex = S.topics.find(t=>t.name===pendingTopic.name);
     if(ex) topic = ex.id; else { const t = {id:uid(), name:pendingTopic.name, kw:[]}; S.topics.push(t); topic = t.id; }
@@ -579,7 +581,7 @@ function addTask(){
   S.tasks.push(task); // new tasks go to the bottom; drag them up if urgent
   clearInput();
   commit();
-  toast(`נוסף ל"${topicById(topic).name}"`);
+  toast("נוסף ✓");
   const el = document.querySelector(`.row[data-id="${task.id}"]`); if(el) el.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 
@@ -781,8 +783,8 @@ function openMenu(task){
     <button class="btn done" id="eDone">✓ סמן כבוצע</button>
     <textarea id="editText" rows="2" aria-label="טקסט המשימה">${esc(task.text)}</textarea>
     ${task.by || task.created ? `<div class="small">נוספה${task.by ? ` ע״י ${esc(task.by)}` : ""}${task.created ? ` · ${esc(fmtShort(task.created))}` : ""}</div>` : ""}
-    <div class="small">נושא</div>
-    <div class="chips" id="editTopics">${topicChips(sel)}</div>
+    <div class="small topicpick">נושא</div>
+    <div class="chips topicpick" id="editTopics">${topicChips(sel)}</div>
     <div class="btns"><button class="btn" id="eTop">⬆ לראש הרשימה</button><button class="btn" id="eBottom">⬇ לסוף הרשימה</button></div>
     <div class="btns"><button class="btn primary" id="eSave">שמור</button><button class="btn" id="eCancel">ביטול</button></div>`, root=>{
       const apply = ()=>{ const v = root.querySelector("#editText").value.trim(); if(v) task.text = v; task.topic = sel; };
@@ -925,7 +927,7 @@ function renderDates(){
       <span class="et">${esc(e.title)}<small>יום ${DAYS[dt.getDay()]}${e.time ? " · " + esc(e.time) : ""}${e.by && e.by!==me ? " · " + esc(e.by) : ""}</small></span>
       <span class="soon">${soonLabel(d)}</span></button>`;
   }).join("");
-  el.innerHTML = `<div class="dh"><h3>תאריכים ופגישות קרובים</h3><button type="button" class="addev" id="addEv">+ תאריך</button></div>${rows || `<div class="empty">אין תאריכים קרובים. לחץ "+ תאריך" כדי להוסיף פגישה או תאריך חשוב.</div>`}`;
+  el.innerHTML = `<div class="dh"><h3>תאריכים ופגישות קרובים</h3><button type="button" class="addev" id="addEv">+ הוסף תאריך</button></div>${rows || `<div class="empty">אין תאריכים קרובים. לחץ "+ הוסף תאריך" כדי להוסיף פגישה או תאריך חשוב.</div>`}`;
 }
 $("#dates").addEventListener("click", e=>{
   if(e.target.closest("#addEv")) return openEvent(null);
@@ -1024,20 +1026,30 @@ function openLists(){
     });
 }
 $("#listName").addEventListener("click", ()=>{ if(lists.cur) openLists(); });
+let wantName = false;
 function askName(){
-  sheet(`<h2>איך קוראים לך?</h2><div class="small">השם יופיע ליד משימות שתוסיף, כדי שכולם ידעו מי כתב.</div>
-    <input type="text" id="nmIn" aria-label="השם שלך"><div class="btns"><button class="btn primary" id="nmOk">המשך</button></div>`, root=>{
-      const i = root.querySelector("#nmIn"); setTimeout(()=>i.focus(), 50);
-      root.querySelector("#nmOk").onclick = ()=>{ const v = i.value.trim(); if(!v) return i.focus(); setMe(v); closeSheet(); render(); };
+  if(me || $("#nmIn")) return;
+  // one button per person already in the list, so the same person is never added twice
+  const seen = new Map(); (S.members||[]).forEach(m=>seen.set(m.name, m.id));
+  const names = [...seen.keys()];
+  sheet(`<h2>${names.length ? "מי אתה?" : "איך קוראים לך?"}</h2>
+    ${names.length ? `<div class="chips" id="nmPick">${names.map(n=>`<button type="button" class="chip" data-n="${esc(n)}">${esc(n)}</button>`).join("")}</div><div class="small">או שם חדש:</div>` : `<div class="small">השם יופיע ליד משימות שתוסיף. שואלים רק פעם אחת בכל מכשיר.</div>`}
+    <input type="text" id="nmIn" aria-label="השם שלך" placeholder="השם שלך"><div class="btns"><button class="btn primary" id="nmOk">המשך</button></div>`, root=>{
+      const i = root.querySelector("#nmIn"); if(!names.length) setTimeout(()=>i.focus(), 50);
+      const pick = root.querySelector("#nmPick");
+      if(pick) pick.addEventListener("click", e=>{ const b = e.target.closest("[data-n]"); if(!b) return; adoptMember(b.dataset.n, seen.get(b.dataset.n)); closeSheet(); render(); });
+      root.querySelector("#nmOk").onclick = ()=>{ const v = i.value.trim(); if(!v) return i.focus(); if(seen.has(v)) adoptMember(v, seen.get(v)); else setMe(v); closeSheet(); render(); };
     });
 }
+function adoptMember(name, id){ if(id){ devId = id; lsSet("shared-dev-v1", devId); } setMe(name); }
 function boot(){
   const inv = parseInvite(location.hash);
   if(inv){
     try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+    const known = lists.all.some(x=>x.id===inv.id);
     addList(inv.id, inv.name);
-    toast(`הצטרפת לרשימה "${inv.name || "רשימה משותפת"}" ✓`);
-    if(!me) setTimeout(askName, 400);
+    if(!known) toast(`הצטרפת לרשימה "${inv.name || "רשימה משותפת"}" ✓`);
+    if(!me) setTimeout(()=>{ if(!loaded) askName(); }, 4000);
   } else if(lists.cur && lists.all.some(x=>x.id===lists.cur)) openList(lists.cur);
   else if(lists.all.length) openList(lists.all[0].id);
   else { lists.cur = null; render(); }
