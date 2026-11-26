@@ -1,0 +1,28 @@
+{
+ "name": "האלבום שלנו",
+ "short_name": "האלבום",
+ "lang": "he",
+ "dir": "rtl",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#e6def0",
+ "theme_color": "#e6def0",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
